@@ -1,0 +1,34 @@
+# guava cache源码阅读
+
+## 核心接口和业务类
+
+* Cache
+* LoadingCache
+* CacheBuilder 构建起
+* LocalManualCache 默认cache
+* LocalLoadingCache 默认加载cache
+* LocalCache 实际cache类, 并未实现Cache接口, 继承 java.util.AbstractMap, 实现 java.util.concurrent.ConcurrentMap
+
+## 常用参数
+
+## LocalCache
+
+#### segment切片数量计算
+
+源码:
+```java
+// concurrencyLevel 并行度
+// evictsBySize -> maxWeight >= 0
+
+int segmentShift = 0;
+int segmentCount = 1;
+while (segmentCount < concurrencyLevel && (!evictsBySize() || segmentCount * 20 <= maxWeight)) {
+  ++segmentShift;
+  segmentCount <<= 1;
+}
+
+this.segmentShift = 32 - segmentShift;
+segmentMask = segmentCount - 1;
+```
+
+segmentCount:=concurrencyLevel
