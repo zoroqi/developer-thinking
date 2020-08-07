@@ -24,7 +24,7 @@
 
 工作告一段落, 为啥G1GC不好使呢. 明明内存是够的, 为啥就`OOM`了, 这到底发生了什么.
 
-在看了G1GC的基本简介后, 发现了可能的原因. G1GC采用region方式将内存分成大量小块, 每个小块分为4种状态, 未使用, 新生代, 老生代, 大内存块(Humongous). 每个region大小在2M\~32M的大小, 启动决定不可变, 当申请内存超过region的一半就会判断是`大对象`申请内存. 大对象可能分配给一个region后剩余部分会不再进行分配, 这会产生内存碎片, 导致总内存是够的但是无法正全部内存的情况.
+在看了G1GC的基本简介后, 发现了可能的原因. G1GC采用region方式将内存分成大量小块, 每个小块分为4种状态, 未使用, 新生代, 老生代, 大内存块(Humongous). 每个region大小在1M\~32M的大小, 启动决定不可变, 当申请内存超过region的一半就会判断是`大对象`申请内存. 大对象可能分配给一个region后剩余部分会不再进行分配, 这会产生内存碎片, 导致总内存是够的但是无法正全部内存的情况.
 
 基于以上猜想计算内存使用
 ```
@@ -83,17 +83,25 @@ OU只是使用OC的一半, 而Block已经无法申请了.
 
 只要把BLOCK_SIZE调整到`BLOCK_SIZE = MB * 1 - KB * 1`立刻就好了. 最后我的猜想得到了验证.
 
+调整JVM参数将`-XX:G1HeapRegionSize=4m`问题同样可以解决.
+
+补充测试, 将`BLOCK`设置为1M. 同时在创建一个 512K小的`Block`看是否可以使用大对象块剩余内存.
+
 为啥我会用G1GC内, 因为需要内存多久选择G1, 使用JVM大神寒泉子提供的JVM工具, [perfma](http://xxfox.perfma.com/), 简单方便可以生成JVM模板. 我一般都是这样生成的, 只是这次太特殊工具失效了.
 
 在查G1参数的时候找到官方的一个介绍同[Garbage First Garbage Collector Tuning](https://www.oracle.com/technical-resources/articles/java/g1gc.html) [Garbage First Garbage Collector Tuning中文](https://www.oracle.com/cn/technical-resources/articles/java/g1gc.html)
 
-> Humongous Objects and Humongous Allocations 部分做了详细介绍
+> Humongous Objects and Humongous Allocations 部分做了解释
+
+[Garbage-First Garbage Collector](https://docs.oracle.com/javase/9/gctuning/garbage-first-garbage-collector.htm) 针对大对象做的说明, 将舍弃大对象占用region中未使用的空间. 并且在GC过程中不进行移动.
 
 ## 反思
 
-基于以上的分析, 其实我可以依旧使用G1GC, 但要调整bitmap大小控制在接近32M但不超过32M, 就可以正常启动了.
+基于以上的分析, 其实我可以依旧使用G1GC, 但要调整bitmap大小控制在接近32M但不超过32M, 就可以正常启动了. 这样可以产生尽量小的内存碎片.
 
 当然核心修改还是不采用这中180G部署方案, 采用hash多来几台机器或使用redis进行存储可能更好.
+
+猜测为什么不进行共享, 是基于大对象是不长存在的和大对象判断为可回收可以快速释放空间为前提的. 大对象所占用region不存在内存copy和压缩的情况, 只有使用和不使用两种状态, 即使在YGC中也可以进行回收操作, 而且成功了收益巨大. 要是可以使用部分内容, YGC就没有办法执行做相应的回收了.
 
 这个实现很特殊, 很少有对象会占用巨大的内存块, 而且这些对象是半永久的对象(服务启动后就不会调整了). 特殊情况特殊对待, 针对大堆还是优先考虑G1GC比较好.
 
