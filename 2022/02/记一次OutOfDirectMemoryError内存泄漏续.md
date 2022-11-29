@@ -1,5 +1,5 @@
 ---
-tags: ["java", "内存泄漏", "spring", "漏洞", "gateway"]
+tags: ["java", "内存泄漏", "framework/spring", "漏洞", "gateway"]
 ---
 
 # 记一次 OutOfDirectMemoryError 内存泄漏后续
