@@ -2,7 +2,7 @@
 
 仅仅作为记录, 借此文学会"避免错误提问"和"如何误导他人".
 
-学习内容来源 [提問的智慧](https://github.com/ryanhanwu/How-To-Ask-Questions-The-Smart-Way) 和 [X-Y PROBLEM](https://coolshell.cn/articles/10804.html)
+学习内容来源 [[2023-07-16-11|提問的智慧]] 和 [X-Y PROBLEM](https://coolshell.cn/articles/10804.html)
 
 
 ## 摘录

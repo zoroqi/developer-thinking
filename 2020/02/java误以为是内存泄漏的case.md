@@ -1,23 +1,12 @@
+---
+tags:
+- java/G1/GC
+- java/内存
+- 内存
+- java
+---
+
 # 误以为是内存泄漏的case
-
------
-* 目录
-- [误以为是内存泄漏的case](#%E8%AF%AF%E4%BB%A5%E4%B8%BA%E6%98%AF%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E7%9A%84case)
-    - [基本状况](#%E5%9F%BA%E6%9C%AC%E7%8A%B6%E5%86%B5)
-    - [基本分析](#%E5%9F%BA%E6%9C%AC%E5%88%86%E6%9E%90)
-    - [使用到的工具](#%E4%BD%BF%E7%94%A8%E5%88%B0%E7%9A%84%E5%B7%A5%E5%85%B7)
-    - [逐步排查](#%E9%80%90%E6%AD%A5%E6%8E%92%E6%9F%A5)
-    - [基于java nmt分析](#%E5%9F%BA%E4%BA%8Ejava+nmt%E5%88%86%E6%9E%90)
-        - [nmt使用](#nmt%E4%BD%BF%E7%94%A8)
-        - [分析过程](#%E5%88%86%E6%9E%90%E8%BF%87%E7%A8%8B)
-    - [暂未解决](#%E6%9A%82%E6%9C%AA%E8%A7%A3%E5%86%B3)
-    - [G1GC](#G1GC)
-        - [堆外内存计算](#%E5%A0%86%E5%A4%96%E5%86%85%E5%AD%98%E8%AE%A1%E7%AE%97)
-    - [参考](#%E5%8F%82%E8%80%83)
------
-
-
-
 
 java运行版本
 
@@ -64,7 +53,7 @@ java服务, 长期运行出现的内存泄漏. 运行时间20天左右出现超�
 1. springboot中nio使用堆外内存.看使用未启动堆外内存
     * 使用的tomcat版本 8.5.11.
     * 对应的NioEndpoint配置默认是false
-    * 暂未找到如何修改配置, TODO
+    * 暂未找到如何修改配置
 2. 线程存在膨胀, 但没有出现泄漏的情况
     * 启动和稳定运行线程相差 100\~150个左右, 100个线程也就堆外100M内存
 3. 内部使用到了GZIP这个
@@ -138,9 +127,6 @@ YGC时, GC root主要是两类:栈空间和老年代分区到新生代分区的�
 
 为了节省空间, G1采用了三种等级进行RSet的存储, 分别是稀疏表, 细粒度PerRegionTable, 粗粒度位图.
 
-// TODO
-
-
 #### 堆外内存计算
 
 [源码地址](http://hg.openjdk.java.net/), 我下载的jdk8u的hotspot, 下载巨慢, 慢慢下大概10M左右. 大学毕业后第一次认真去看c++的代码, 看的真是费劲啊, c++语法特性太多了. g1的代码在share/vm/gc_implementation/g1/目录下.
@@ -149,13 +135,13 @@ InstanceKlass::oop_oop_iterate_nv 没有找到对应代码, 向下找 InstanceKl
 
 根据代码大量堆外内存申请是HeapRegionRemSet中OtherRegionsTable的PerRegionTable申请的, 这个结构是细粒度的一个card表, 有bitmap存储. PerRegionTable有一个BitMap的结构, 这部分会申请堆外的内存, 根据追代码判断每个bitmap大小根据CardsPerRegion确定, 在没有超过阈值的情况下可以不断的申请. 个数根据\_max\_fine\_entries进行确定. 这个PerRegionTable结构是每个region都存在一个的, 这里可能会申请大量堆外内存. 这可以和之前统计数据对应上.
 
-不知道cmd的日志为什么不把这部分内存算作GC的, 而是算作内部的.
+**不知道cmd的日志为什么不把这部分内存算作GC的, 而是算作内部的.**
 
-堆外内存的使用时根据可以根据\_max\_fine\_entries\*CardsPerRegion\*region数量决定的.一下是计算相关代码
+堆外内存的使用时根据可以根据`_max_fine_entries*CardsPerRegion*region`数量决定的.一下是计算相关代码
 
 **G1初始参数计算**
 
-```C++
+```c
 常量:
 HeapRegionBounds::min_size = 1024*1024
 HeapRegionBounds::target_number = 2048
@@ -210,9 +196,9 @@ void HeapRegion::setup_heap_region_size(size_t initial_heap_size, size_t max_hea
 
 基于以上代码和当前配置计算出, region_size大小是32M, region数量在3200个左右, CardsPerRegion是8Kb, region_size_log是25
 
-**\_max\_fine\_entries 计算**
+**`_max_fine_entries` 计算**
 
-```c++
+```c
 G1RSetRegionEntries=G1RSetRegionEntriesBase * (region_size_log_mb + 1);
 G1RSetRegionEntriesBase=256
 
@@ -248,35 +234,32 @@ void HeapRegionRemSet::setup_remset_size() {
 
 简单计算公式, 可能是错的.
 
-```
+
+$$
+\begin{matrix}
 region\_size\_log = \lfloor\log_2\lfloor(minMemory + maxMemory)/2/2048\rfloor\rfloor\\
 region\_size = 1 << region\_size\_log\\
-region\_size \in [1,32]\\
+region\_size \in [1,32] \\
 region\_size\_log = \lfloor\log_2region\_size\rfloor\\
 CardsPerRegion = region\_size >> 9 \\
 region\_count = maxMemory/region\_size\\
-
+\\
 G1RSetRegionEntriesBase = 256 \\
 region\_size\_log\_mb = MAX(region\_size\_log - 20, 0)\\
 G1RSetRegionEntries = G1RSetRegionEntriesBase * (region\_size\_log\_mb + 1) \\
 max_entries_log = \lfloor\log_2G1RSetRegionEntries\rfloor\\
 \_max\_fine\_entries = 1 << max\_entries\_log\\
 native\_memory = region\_count*\_max\_fine\_entries*CardsPerRegion
-```
+\end{matrix}
+$$
+
 
 ## 参考
 
-https://blog.csdn.net/jicahoo/article/details/50933469
-
-https://github.com/jeffgriffith/native-jvm-leaks
-
-https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/tooldescr007.html#BABJGHDB
-
-[一个总结, 国外](https://medium.com/@milan.mimica/everybody-leaks-f210631f13ef)
-
-[相似的问题](https://github.com/prestodb/presto/issues/9553)
-
-[JVM G1源码分析和调优](https://book.douban.com/subject/33408230/)
-
-[JVM G1 源码分析（三）- Remembered Sets](https://blog.csdn.net/a860MHz/article/details/97276211)
-
+* [NMT 和 pmap](https://blog.csdn.net/jicahoo/article/details/50933469)
+* [native-jvm-leaks](https://github.com/jeffgriffith/native-jvm-leaks)
+* [How to Monitor VM Internal Memory](https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/tooldescr007.html#BABJGHDB)
+* [一个总结, 国外](https://medium.com/@milan.mimica/everybody-leaks-f210631f13ef)
+* [相似的问题](https://github.com/prestodb/presto/issues/9553)
+* [JVM G1源码分析和调优](https://book.douban.com/subject/33408230/)
+* [JVM G1 源码分析（三）- Remembered Sets](https://blog.csdn.net/a860MHz/article/details/97276211)
